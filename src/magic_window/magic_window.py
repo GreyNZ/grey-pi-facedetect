@@ -3,12 +3,12 @@ import cv2
 import matplotlib.pyplot as plt
 import os
 import sys
-from helpers import adj_detect_face
+from helpers import adj_detect_face, slicer
 # %matplotlib inline
 
 class MagicWindow:
 
-    def __init__(self, background_image: str, display_size: tuple[int, int]):
+    def __init__(self, background_image: str, display_size: tuple[int, int], detecter=adj_detect_face):
         self.background_image = self._set_background_image(background_image)
         self.display_size = display_size
         self.current_vid_frame = None
@@ -16,6 +16,8 @@ class MagicWindow:
         self.camera_res = None
         self.camera_fps = None
         self.background_center = None
+        self.detecter = detecter
+
 
     def _set_background_image(self, background_image: str) -> cv2.Mat:
         assert (os.path.isfile(background_image)), f'File {background_image=} does not exist'
@@ -54,12 +56,30 @@ class MagicWindow:
             # cv2.imshow('Video camera', frame)   # Uncomment me to show the video feed
 
             # Process video frame to extract center pixel of face
-            face_img, face_rects = self.detect_face(adj_detect_face)
+            face_img, centroid = self.detect_face(self.detecter)
             cv2.imshow('Face image', face_img)
 
             # Transpose center pixel onto background and slice window
+            centroid_x, centroid_y = centroid
+            vid_frame_height, vid_frame_width, _ = self.current_vid_frame.shape
+            norm_centroid_x = centroid_x / vid_frame_width
+            norm_centroid_y = centroid_y / vid_frame_height
+
             # Display window
-        
+            inverted_centroid_y = norm_centroid_x
+            inverted_centroid_x = 1 - norm_centroid_y
+
+            x_scaler = self.background_image.shape[0] - self.display_size[0]
+            y_scaler = self.background_image.shape[1] - self.display_size[1]
+            x1 = int(0 + x_scaler * inverted_centroid_x)
+            x2 = int(x1 + self.display_size[0])
+            y1 = int(0 + y_scaler * inverted_centroid_y)
+            y2 = int(y1 + self.display_size[1])
+            print((x1, x2, y1, y2))
+            
+            img_slice = slicer(self.background_image, (x1, x2, y1, y2))
+            cv2.imshow('Magic window', img_slice)
+
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
         cap.release()
@@ -76,12 +96,12 @@ class MagicWindow:
             print("Frames per second using video.get(cv2.CAP_PROP_FPS) : {0}".format(self.camera_fps))
     
     def detect_face(self, detecter):
-        face_img, face_rects = detecter(self.current_vid_frame)
-        return face_img, face_rects
+        face_img, centroid = detecter(self.current_vid_frame)
+        return face_img, centroid
 
 
 
-magic_window = MagicWindow('src\magic_window\hobbiton.jpeg', (500, 500))
+magic_window = MagicWindow('src\magic_window\hobbiton.jpeg', (300, 300))
 # magic_window.printer()
 # magic_window.stream_video()
 # magic_window._set_background_center()

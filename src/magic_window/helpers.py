@@ -1,10 +1,13 @@
 import cv2
 import os
+import numpy as np
+from numba import jit
 
 FILE_NAME = 'src/magic_window/haarcascade_frontalface_default.xml'
 assert (os.path.isfile(FILE_NAME))
 FACE_CASCADE = cv2.CascadeClassifier(FILE_NAME)
 
+@jit
 def return_largest(a,b):
     """Compare a,b and reutrn largest"""
     
@@ -18,6 +21,19 @@ def return_largest(a,b):
     else:
         return b
     
+@jit
+def get_largest_face(face_img, face_rects):
+    x, y, _ = face_img.shape
+    centroid = (x // 2, y // 2)   # Set default centroid to the center of screen
+    largest = [0,0,0,0]
+    for x, y, w, h in face_rects:
+        largest = return_largest(largest, [x, y, w, h])
+    x, y, w, h = largest
+    if (len(face_rects)):   # If there were face_rects present, update the centroid
+        centroid = int(x+w/2), int(y+h/2)
+    return centroid
+    
+@jit
 def adj_detect_face(img):
     """Dectect faces in an image with no overlaps
     Arg img: an image
@@ -29,5 +45,24 @@ def adj_detect_face(img):
     face_img = img.copy()
     face_rects = FACE_CASCADE.detectMultiScale(face_img,scaleFactor=1.2, minNeighbors=5) 
     for (x,y,w,h) in face_rects: 
-        cv2.rectangle(face_img, (x,y), (x+w,y+h), (255,255,255), 10) 
-    return face_img, face_rects
+        cv2.rectangle(face_img, (x,y), (x+w,y+h), (255,255,255), 10)
+    face_centroid = get_largest_face(face_img, face_rects)
+    return face_img, face_centroid
+    
+@jit 
+def slicer(img, coords):
+    x1,x2,y1,y2 = coords
+    img_shape = np.shape(img)
+    
+    # Check we are not trying to slice outside of ary
+    if x1 < 0 or y1 < 0:
+        raise Exception(f"Sorry, cannot slice below 0, out of array range, {x1=}, {y1=}") 
+        
+    if x2 > img_shape[0] or y2 > img_shape[1]:
+        raise Exception(f"Sorry, cannot slice out of range, {img_shape=}, {x2=}, {y2=}") 
+    
+    #swap x/y around as np/cv is weird with images
+    img_slice = img[x1:x2, y1:y2]
+    # img_slice = img[y1:y2, x1:x2]
+    
+    return img_slice
